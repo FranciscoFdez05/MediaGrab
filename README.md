@@ -10,6 +10,7 @@ YT-Downloader es una aplicación de Windows From en C# que permite descargar vid
 ## 🖥️ Requisitos
 - .NET Framework 4.7.2 o superior
 - yt-dlp
+
 Puedes instalar yt-dlp con:
 ```
 winget install yt-dlp
