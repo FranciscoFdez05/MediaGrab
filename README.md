@@ -22,27 +22,27 @@ o Descargar el ejecutable desde [Releases](https://github.com/FranciscoFdez05/YT
 ## 📋 Manual de uso
 1. Pegamos la URL que queramos descargar con: `URL to download`
 
-![](YTDownloaderURL.png)
+![](img/YTDownloaderURL.png)
 
 2. Seleccionamos la carpeta donde queramos descargar con: `Folder`
 
-![](YTDownloaderFolder.png)
+![](img/YTDownloaderFolder.png)
 
 3. Seleccionamos el formato de archivo que queremos descargar
 
-![](YTDownloaderFormato.png)
+![](img/YTDownloaderFormato.png)
 
 4. Para descargar pulsamos en `Download`
 
-![](YTDownloaderDownload.png)
+![](img/YTDownloaderDownload.png)
 
 -  Podemos ver el progreso en la barra de progreso
 
-![](YTDownloaderBar.png)
+![](img/YTDownloaderBar.png)
 
 - Podemos limpiar la URL con el botón `Clear`
 
-![](YTDownloaderClear.png)
+![](img/YTDownloaderClear.png)
 
 ## 🤝 Contribuir
 Las contribuciones son bienvenidas. Si deseas contribuir, sigue estos pasos:
