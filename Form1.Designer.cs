@@ -39,6 +39,8 @@
             this.radioButtonMP4 = new System.Windows.Forms.RadioButton();
             this.radioButtonMP3 = new System.Windows.Forms.RadioButton();
             this.progressBar = new System.Windows.Forms.ProgressBar();
+            this.buttonYtDlp = new System.Windows.Forms.Button();
+            this.buttonActualizarYtDlp = new System.Windows.Forms.Button();
             this.SuspendLayout();
             // 
             // label1
@@ -134,11 +136,33 @@
             this.progressBar.Size = new System.Drawing.Size(277, 23);
             this.progressBar.TabIndex = 9;
             // 
+            // buttonYtDlp
+            // 
+            this.buttonYtDlp.Location = new System.Drawing.Point(260, 178);
+            this.buttonYtDlp.Name = "buttonYtDlp";
+            this.buttonYtDlp.Size = new System.Drawing.Size(135, 28);
+            this.buttonYtDlp.TabIndex = 10;
+            this.buttonYtDlp.Text = "yt-dlp";
+            this.buttonYtDlp.UseVisualStyleBackColor = true;
+            this.buttonYtDlp.Click += new System.EventHandler(this.buttonYtDlp_Click);
+            // 
+            // buttonActualizarYtDlp
+            // 
+            this.buttonActualizarYtDlp.Location = new System.Drawing.Point(402, 178);
+            this.buttonActualizarYtDlp.Name = "buttonActualizarYtDlp";
+            this.buttonActualizarYtDlp.Size = new System.Drawing.Size(135, 28);
+            this.buttonActualizarYtDlp.TabIndex = 11;
+            this.buttonActualizarYtDlp.Text = "Update yt-dlp";
+            this.buttonActualizarYtDlp.UseVisualStyleBackColor = true;
+            this.buttonActualizarYtDlp.Click += new System.EventHandler(this.buttonActualizarYtDlp_Click);
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(549, 187);
+            this.ClientSize = new System.Drawing.Size(549, 218);
+            this.Controls.Add(this.buttonActualizarYtDlp);
+            this.Controls.Add(this.buttonYtDlp);
             this.Controls.Add(this.progressBar);
             this.Controls.Add(this.radioButtonMP3);
             this.Controls.Add(this.radioButtonMP4);
@@ -170,6 +194,8 @@
         private System.Windows.Forms.RadioButton radioButtonMP4;
         private System.Windows.Forms.RadioButton radioButtonMP3;
         private System.Windows.Forms.ProgressBar progressBar;
+        private System.Windows.Forms.Button buttonYtDlp;
+        private System.Windows.Forms.Button buttonActualizarYtDlp;
     }
 }
 

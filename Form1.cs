@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -11,6 +13,12 @@ namespace YTDownloader
 {
     public partial class Form1 : Form
     {
+        // Lineas de progreso de yt-dlp con --newline, p.ej. "[download]  42.3% of 12.34MiB at ...".
+        private static readonly Regex PorcentajeDescarga = new Regex(
+            @"^\[download\]\s+(\d{1,3}(?:[.,]\d+)?)%",
+            RegexOptions.Compiled
+        );
+
         public Form1()
         {
             InitializeComponent();
@@ -139,8 +147,10 @@ namespace YTDownloader
 
                 Text = $"YT Downloader - Descargando {formato.ToUpper()}...";
 
+                IProgress<int> progreso = new Progress<int>(ReportarProgreso);
+
                 (int codigo, string mensaje) = await Task.Run(() =>
-                    DescargarVideo(url, carpetaDestino, formato, comandoBase)
+                    DescargarVideo(url, carpetaDestino, formato, comandoBase, progreso)
                 );
 
                 if (codigo == 0)
@@ -169,10 +179,7 @@ namespace YTDownloader
             finally
             {
                 SetUiEnabled(true);
-                if (progressBar.Style == ProgressBarStyle.Marquee)
-                {
-                    SetProgressBarIdle();
-                }
+                SetProgressBarIdle();
 
                 Text = "YT Downloader";
             }
@@ -187,6 +194,8 @@ namespace YTDownloader
             ra.Enabled = enabled;
             radioButtonMP4.Enabled = enabled;
             radioButtonMP3.Enabled = enabled;
+            buttonYtDlp.Enabled = enabled;
+            buttonActualizarYtDlp.Enabled = enabled;
         }
 
         private void SetProgressBarBusy(bool busy)
@@ -201,6 +210,32 @@ namespace YTDownloader
                 progressBar.Style = ProgressBarStyle.Blocks;
                 progressBar.MarqueeAnimationSpeed = 0;
             }
+        }
+
+        private void ReportarProgreso(int porcentaje)
+        {
+            // El primer porcentaje real sustituye a la animacion de espera.
+            if (progressBar.Style != ProgressBarStyle.Blocks)
+            {
+                SetProgressBarBusy(false);
+            }
+
+            porcentaje = Math.Min(100, Math.Max(0, porcentaje));
+
+            // La descarga avanza por etapas (video y audio por separado en MP4),
+            // asi que la barra nunca retrocede aunque el porcentaje de la etapa si lo haga.
+            if (porcentaje <= progressBar.Value)
+            {
+                return;
+            }
+
+            // Saltarse la animacion de Windows para que la barra siga a la descarga en tiempo real.
+            if (porcentaje < progressBar.Maximum)
+            {
+                progressBar.Value = porcentaje + 1;
+            }
+
+            progressBar.Value = porcentaje;
         }
 
         private void SetProgressBarIdle()
@@ -548,7 +583,7 @@ namespace YTDownloader
             }
         }
 
-        private (int codigo, string mensaje) DescargarVideo(string url, string carpetaDestino, string formato, string[] comandoBase)
+        private (int codigo, string mensaje) DescargarVideo(string url, string carpetaDestino, string formato, string[] comandoBase, IProgress<int> progreso)
         {
             try
             {
@@ -557,13 +592,18 @@ namespace YTDownloader
                 string salida = Path.Combine(carpetaDestino, "%(title)s.%(ext)s");
                 string argumentosExtra;
 
+                // MP4 baja video y audio por separado antes de mezclarlos; MP3 baja una sola vez.
+                int etapasEsperadas;
+
                 if (formato == "mp3")
                 {
-                    argumentosExtra = $"-x --audio-format mp3 -o \"{salida}\" \"{url}\"";
+                    argumentosExtra = $"--newline -x --audio-format mp3 -o \"{salida}\" \"{url}\"";
+                    etapasEsperadas = 1;
                 }
                 else
                 {
-                    argumentosExtra = $"-f \"bestvideo+bestaudio/best\" --merge-output-format mp4 -o \"{salida}\" \"{url}\"";
+                    argumentosExtra = $"--newline -f \"bestvideo+bestaudio/best\" --merge-output-format mp4 -o \"{salida}\" \"{url}\"";
+                    etapasEsperadas = 2;
                 }
 
                 string ejecutable = comandoBase[0];
@@ -578,10 +618,373 @@ namespace YTDownloader
                     ? argumentosExtra
                     : $"{argumentosBase} {argumentosExtra}";
 
+                StringBuilder registro = new StringBuilder();
+                object candado = new object();
+                int etapaActual = 0;
+                int etapasTotales = etapasEsperadas;
+
                 using (Process process = new Process())
                 {
                     process.StartInfo.FileName = ejecutable;
                     process.StartInfo.Arguments = argumentosFinales;
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.CreateNoWindow = true;
+                    process.StartInfo.RedirectStandardOutput = true;
+                    process.StartInfo.RedirectStandardError = true;
+                    process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+                    process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+
+                    DataReceivedEventHandler procesarLinea = (remitente, evento) =>
+                    {
+                        if (evento.Data == null)
+                        {
+                            return;
+                        }
+
+                        lock (candado)
+                        {
+                            registro.AppendLine(evento.Data);
+                        }
+
+                        string linea = evento.Data.Trim();
+
+                        // Cada destino nuevo es una etapa mas de descarga.
+                        if (linea.StartsWith("[download] Destination:", StringComparison.OrdinalIgnoreCase))
+                        {
+                            etapaActual++;
+
+                            if (etapaActual > etapasTotales)
+                            {
+                                etapasTotales = etapaActual;
+                            }
+
+                            return;
+                        }
+
+                        Match coincidencia = PorcentajeDescarga.Match(linea);
+
+                        if (!coincidencia.Success)
+                        {
+                            return;
+                        }
+
+                        double porcentajeEtapa;
+
+                        if (!double.TryParse(
+                                coincidencia.Groups[1].Value.Replace(',', '.'),
+                                NumberStyles.Float,
+                                CultureInfo.InvariantCulture,
+                                out porcentajeEtapa))
+                        {
+                            return;
+                        }
+
+                        // Sin linea de destino previa (por ejemplo al reanudar) contamos la primera etapa igual.
+                        int etapa = Math.Max(etapaActual, 1);
+                        int total = Math.Max(etapasTotales, etapa);
+
+                        progreso.Report((int)Math.Round(((etapa - 1) * 100.0 + porcentajeEtapa) / total));
+                    };
+
+                    process.OutputDataReceived += procesarLinea;
+                    process.ErrorDataReceived += procesarLinea;
+
+                    process.Start();
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                    process.WaitForExit();
+
+                    string mensaje;
+
+                    lock (candado)
+                    {
+                        mensaje = registro.ToString().Trim();
+                    }
+
+                    if (process.ExitCode == 0)
+                    {
+                        progreso.Report(100);
+                    }
+
+                    return (process.ExitCode, mensaje);
+                }
+            }
+            catch (Exception ex)
+            {
+                return (1, ex.Message);
+            }
+        }
+
+        private async void buttonYtDlp_Click(object sender, EventArgs e)
+        {
+            SetUiEnabled(false);
+            SetProgressBarBusy(true);
+            Text = "YT Downloader - Comprobando yt-dlp...";
+
+            try
+            {
+                string[] comandoBase = await Task.Run(() => ObtenerComandoYtDlp());
+
+                if (comandoBase != null)
+                {
+                    string version = await Task.Run(() => ObtenerVersionYtDlp(comandoBase));
+
+                    SetProgressBarDone();
+
+                    MessageBox.Show(
+                        $"yt-dlp está instalado.\r\n\r\nComando: {DescribirComando(comandoBase)}\r\nVersión: {version}",
+                        "yt-dlp disponible",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information
+                    );
+                    return;
+                }
+
+                DialogResult resultado = MessageBox.Show(
+                    "yt-dlp no está disponible.\n\n¿Quieres que intente instalarlo automáticamente?",
+                    "yt-dlp no encontrado",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question
+                );
+
+                if (resultado != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                Text = "YT Downloader - Instalando yt-dlp...";
+
+                (bool ok, string mensaje) = await Task.Run(() => InstalarYtDlp());
+
+                if (!ok)
+                {
+                    MessageBox.Show(
+                        mensaje,
+                        "No se pudo instalar yt-dlp",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error
+                    );
+                    return;
+                }
+
+                SetProgressBarDone();
+
+                MessageBox.Show(
+                    mensaje,
+                    "yt-dlp instalado",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+            }
+            finally
+            {
+                SetUiEnabled(true);
+                SetProgressBarIdle();
+
+                Text = "YT Downloader";
+            }
+        }
+
+        private async void buttonActualizarYtDlp_Click(object sender, EventArgs e)
+        {
+            SetUiEnabled(false);
+            SetProgressBarBusy(true);
+            Text = "YT Downloader - Actualizando yt-dlp...";
+
+            try
+            {
+                string[] comandoBase = await Task.Run(() => ObtenerComandoYtDlp());
+
+                if (comandoBase == null)
+                {
+                    MessageBox.Show(
+                        "yt-dlp no está instalado, así que no hay nada que actualizar.\r\n\r\nUsa el botón \"yt-dlp\" para instalarlo.",
+                        "yt-dlp no encontrado",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                    return;
+                }
+
+                string versionPrevia = await Task.Run(() => ObtenerVersionYtDlp(comandoBase));
+
+                (bool ok, string mensaje) = await Task.Run(() => ActualizarYtDlp(comandoBase));
+
+                if (!ok)
+                {
+                    MessageBox.Show(
+                        mensaje,
+                        "No se pudo actualizar yt-dlp",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error
+                    );
+                    return;
+                }
+
+                string[] comandoActualizado = await Task.Run(() => ObtenerComandoYtDlp()) ?? comandoBase;
+                string versionNueva = await Task.Run(() => ObtenerVersionYtDlp(comandoActualizado));
+
+                SetProgressBarDone();
+
+                string resumen = versionPrevia == versionNueva
+                    ? $"yt-dlp ya estaba en la última versión ({versionNueva})."
+                    : $"yt-dlp actualizado: {versionPrevia} -> {versionNueva}";
+
+                MessageBox.Show(
+                    $"{resumen}\r\n\r\n{mensaje}".Trim(),
+                    "Actualización de yt-dlp",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information
+                );
+            }
+            finally
+            {
+                SetUiEnabled(true);
+                SetProgressBarIdle();
+
+                Text = "YT Downloader";
+            }
+        }
+
+        private string DescribirComando(string[] comandoBase)
+        {
+            return string.Join(" ", comandoBase);
+        }
+
+        private string ObtenerVersionYtDlp(string[] comandoBase)
+        {
+            (int codigo, string salida) = EjecutarProceso(
+                comandoBase[0],
+                UnirArgumentos(comandoBase.Skip(1).ToArray(), "--version")
+            );
+
+            if (codigo != 0 || string.IsNullOrWhiteSpace(salida))
+            {
+                return "desconocida";
+            }
+
+            return salida
+                .Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries)
+                .First()
+                .Trim();
+        }
+
+        private (bool ok, string mensaje) ActualizarYtDlp(string[] comandoBase)
+        {
+            // Un yt-dlp instalado como módulo de Python solo se actualiza con pip.
+            if (comandoBase.Length > 1)
+            {
+                return ActualizarConPip(comandoBase[0]);
+            }
+
+            (int codigo, string salida) = EjecutarProceso(comandoBase[0], "-U");
+
+            if (codigo == 0)
+            {
+                return (
+                    true,
+                    string.IsNullOrWhiteSpace(salida) ? "yt-dlp actualizado con -U." : salida
+                );
+            }
+
+            (bool okWinget, string mensajeWinget) = ActualizarConWinget();
+            if (okWinget)
+            {
+                return (true, mensajeWinget);
+            }
+
+            (bool okPip, string mensajePip) = ActualizarConPip(null);
+            if (okPip)
+            {
+                return (true, mensajePip);
+            }
+
+            return (
+                false,
+                $"Intento con -U:\r\n{salida}\r\n\r\nIntento con winget:\r\n{mensajeWinget}\r\n\r\nIntento con pip:\r\n{mensajePip}"
+            );
+        }
+
+        private (bool ok, string mensaje) ActualizarConWinget()
+        {
+            if (!ComandoExisteEnSistema("winget"))
+            {
+                return (false, "No se encontró winget en este equipo.");
+            }
+
+            (int codigo, string salida) = EjecutarProceso("winget", "upgrade --id yt-dlp.yt-dlp -e");
+
+            string salidaNormalizada = salida.ToLowerInvariant();
+
+            if (
+                salidaNormalizada.Contains("no available upgrade found") ||
+                salidaNormalizada.Contains("no newer package versions are available")
+            )
+            {
+                return (true, "yt-dlp ya estaba en la última versión disponible en winget.");
+            }
+
+            if (codigo != 0)
+            {
+                return (
+                    false,
+                    string.IsNullOrWhiteSpace(salida) ? "Winget no pudo actualizar yt-dlp." : salida
+                );
+            }
+
+            return (true, string.IsNullOrWhiteSpace(salida) ? "yt-dlp actualizado con winget." : salida);
+        }
+
+        private (bool ok, string mensaje) ActualizarConPip(string ejecutablePython)
+        {
+            if (ejecutablePython == null)
+            {
+                if (ComandoExisteEnSistema("python"))
+                {
+                    ejecutablePython = "python";
+                }
+                else if (ComandoExisteEnSistema("py"))
+                {
+                    ejecutablePython = "py";
+                }
+            }
+
+            if (ejecutablePython == null)
+            {
+                return (false, "No se pudo ejecutar pip porque no hay Python disponible en el sistema.");
+            }
+
+            (int codigo, string salida) = EjecutarProceso(ejecutablePython, "-m pip install --upgrade yt-dlp");
+
+            if (codigo != 0)
+            {
+                return (
+                    false,
+                    string.IsNullOrWhiteSpace(salida) ? "Pip no pudo actualizar yt-dlp." : salida
+                );
+            }
+
+            return (true, string.IsNullOrWhiteSpace(salida) ? "yt-dlp actualizado con pip." : salida);
+        }
+
+        private string UnirArgumentos(string[] argumentosBase, string argumentosExtra)
+        {
+            string unidos = string.Join(
+                " ",
+                argumentosBase.Select(argumento => argumento.Contains(" ") ? $"\"{argumento}\"" : argumento)
+            );
+
+            return string.IsNullOrWhiteSpace(unidos) ? argumentosExtra : $"{unidos} {argumentosExtra}";
+        }
+
+        private (int codigo, string salida) EjecutarProceso(string ejecutable, string argumentos)
+        {
+            try
+            {
+                using (Process process = new Process())
+                {
+                    process.StartInfo.FileName = ejecutable;
+                    process.StartInfo.Arguments = argumentos;
                     process.StartInfo.UseShellExecute = false;
                     process.StartInfo.CreateNoWindow = true;
                     process.StartInfo.RedirectStandardOutput = true;
@@ -595,8 +998,7 @@ namespace YTDownloader
                     string stderr = process.StandardError.ReadToEnd();
                     process.WaitForExit();
 
-                    string mensaje = UnirSalida(stdout, stderr);
-                    return (process.ExitCode, mensaje);
+                    return (process.ExitCode, UnirSalida(stdout, stderr));
                 }
             }
             catch (Exception ex)
