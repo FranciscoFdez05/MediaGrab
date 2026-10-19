@@ -6,9 +6,10 @@
 
 <p align="center">
   <a href="https://github.com/FranciscoFdez05/MediaGrab/releases/latest"><img src="https://img.shields.io/github/v/release/FranciscoFdez05/MediaGrab?label=versi%C3%B3n" alt="Última versión"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/.NET_Framework-4.7.2-512BD4" alt=".NET Framework 4.7.2">
+  <a href="https://github.com/FranciscoFdez05/MediaGrab/actions/workflows/ci.yml"><img src="https://github.com/FranciscoFdez05/MediaGrab/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/.NET-10-512BD4" alt=".NET 10">
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4" alt="Windows 10 | 11">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue" alt="License: MIT"></a>
 </p>
 
 MediaGrab descarga vídeo (MP4) o audio (MP3) desde cualquier URL compatible con [yt-dlp](https://github.com/yt-dlp/yt-dlp): YouTube, Vimeo, Twitch, redes sociales, enlaces directos a archivos y [miles de sitios más](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Es una aplicación de escritorio para Windows: pegas el enlace, eliges carpeta y formato, y descargas.
@@ -29,8 +30,7 @@ MediaGrab descarga vídeo (MP4) o audio (MP3) desde cualquier URL compatible con
 - 🖥️ Nítida en pantallas de alta resolución y al moverla entre monitores
 
 ## 🖥️ Requisitos
-- Windows 10 u 11
-- .NET Framework 4.7.2 o superior (incluido en Windows 10 1803 y posteriores)
+- Windows 10 u 11 de 64 bits
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp): la app ofrece instalarlo si no lo encuentra
 - [ffmpeg](https://ffmpeg.org/): necesario para unir vídeo y audio y para convertir a MP3 (winget lo instala junto a yt-dlp)
 
@@ -41,11 +41,11 @@ winget install yt-dlp
 
 ## ⚙️ Instalación
 Descarga la última versión desde [Releases](https://github.com/FranciscoFdez05/MediaGrab/releases):
-- **`MediaGrab-vX.Y.Z.zip`** (recomendado): descomprímelo y ejecuta `MediaGrab.exe`. Incluye la configuración para que la ventana se vea nítida al moverla entre monitores con distinto escalado.
-- **`MediaGrab.exe`**: el ejecutable suelto, listo para usar sin descomprimir nada.
+- **`MediaGrab-vX.Y.Z-win-x64.exe`** (recomendado): lo lleva todo incluido. Descárgalo y ábrelo; no hay que instalar nada más.
+- **`MediaGrab-vX.Y.Z-win-x64-ligero.exe`**: ocupa mucho menos, pero necesita tener instalado el [.NET Desktop Runtime 10](https://dotnet.microsoft.com/download/dotnet/10.0). Si no lo tienes, Windows te lo pedirá al abrirlo.
 - **`SHA256SUMS.txt`**: hashes para comprobar que la descarga no se ha alterado.
 
-No necesita instalación. Windows SmartScreen puede avisar la primera vez porque el ejecutable no está firmado: pulsa *Más información* → *Ejecutar de todas formas*.
+MediaGrab es portable: no se instala y guarda sus preferencias en `%APPDATA%\MediaGrab`. Windows SmartScreen puede avisar la primera vez porque el ejecutable no está firmado: pulsa *Más información* → *Ejecutar de todas formas*.
 
 También puedes clonar el proyecto y [compilarlo](#-compilar):
 ```
@@ -80,27 +80,36 @@ MediaGrab/
 │   │   └── DownloadProgressTracker.cs  Convierte la salida de yt-dlp en progreso
 │   ├── Infrastructure/
 │   │   ├── ProcessRunner.cs        Ejecuta procesos sin bloqueos y con cancelación
-│   │   └── CommandLine.cs          Escapa argumentos de línea de comandos
+│   │   └── AppSettings.cs          Preferencias del usuario (settings.json)
 │   ├── Models/                     Tipos de datos (petición, calidad, progreso, resultados)
 │   ├── Assets/app.ico              Icono de la aplicación
-│   └── Properties/                 Versión, recursos y preferencias de usuario
+│   └── MediaGrab.csproj            Proyecto: versión, metadatos y publicación
+├── tests/MediaGrab.Tests/          Tests automáticos (xUnit)
 ├── docs/images/                    Logo y capturas del README
 ├── tools/make_logo.py              Genera el logo y el icono (requiere Pillow)
-├── .github/workflows/build.yml     Compilación automática en GitHub Actions
-├── build.ps1                       Compila y prepara los archivos de la release
+├── .github/workflows/ci.yml        Tests y compilación automática en GitHub Actions
+├── build.ps1                       Tests + compilación + archivos de la release
+├── global.json                     Versión del SDK de .NET
 ├── CHANGELOG.md                    Historial de versiones
-└── MediaGrab.slnx                  Solución de Visual Studio
+└── MediaGrab.slnx                  Solución
 ```
 
 ## 🔨 Compilar
-Necesitas Visual Studio 2022 o posterior (o *Build Tools for Visual Studio*) con el workload **Desarrollo de escritorio de .NET**.
+Necesitas el [SDK de .NET 10](https://dotnet.microsoft.com/download/dotnet/10.0). Para editar la interfaz con el diseñador, usa Visual Studio 2026 o posterior.
 
-- **Visual Studio:** abre `MediaGrab.slnx` y compila. El ejecutable queda en `src/MediaGrab/bin/Release/MediaGrab.exe`.
-- **Release lista para publicar:** desde PowerShell, en la raíz del repositorio:
-  ```
-  .\build.ps1
-  ```
-  Genera en `dist/` el `.exe`, el `.zip`, los hashes `SHA256SUMS.txt` y las notas de la versión (`RELEASE_NOTES.md`, sacadas de [CHANGELOG.md](CHANGELOG.md)).
+```
+dotnet build          # compilar
+dotnet test           # ejecutar los tests
+dotnet run --project src/MediaGrab
+```
+
+Para preparar una release, desde PowerShell en la raíz del repositorio:
+```
+.\build.ps1
+```
+Ejecuta los tests y genera en `dist/` los dos `.exe`, los hashes `SHA256SUMS.txt` y las notas de la versión (`RELEASE_NOTES.md`, sacadas de [CHANGELOG.md](CHANGELOG.md)).
+
+La versión se cambia en `src/MediaGrab/MediaGrab.csproj` (`<Version>`).
 
 ## 🤝 Contribuir
 Las contribuciones son bienvenidas:

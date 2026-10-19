@@ -18,6 +18,7 @@ El formato sigue [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/) y e
 - Se ve nítida en pantallas con escalado (125 %, 150 %…).
 
 ### Cambiado
+- Migrada a **.NET 10**. La descarga principal es un único `.exe` que funciona sin instalar nada.
 - Interfaz renovada y en español, con nuevo logo.
 - Los errores se muestran en la propia ventana, con el detalle a un clic, en lugar de en ventanas emergentes.
 

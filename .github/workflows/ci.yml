@@ -1,4 +1,4 @@
-name: Build
+name: CI
 
 on:
   push:
@@ -13,9 +13,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: microsoft/setup-msbuild@v2
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
 
-      - name: Compilar y empaquetar
+      - name: Tests, compilación y empaquetado
         shell: pwsh
         run: ./build.ps1
 
