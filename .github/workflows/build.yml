@@ -1,0 +1,26 @@
+name: Build
+
+on:
+  push:
+    branches: [master, main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: microsoft/setup-msbuild@v2
+
+      - name: Compilar y empaquetar
+        shell: pwsh
+        run: ./build.ps1
+
+      - name: Publicar los archivos de la release como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: MediaGrab
+          path: dist/*

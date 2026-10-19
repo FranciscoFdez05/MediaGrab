@@ -361,3 +361,6 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Ejecutables preparados para GitHub Releases (se suben a la release, no al repositorio)
+dist/
